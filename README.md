@@ -232,9 +232,57 @@ class User extends ActiveRecord implements \yii\web\IdentityInterface,\OAuth2\St
 此时你应该完成了，但坑还是有的，请留意
 
 
-测试方法：
-http://localhost/oauth2/token
+【测试方法】
+请不要使用chrome等浏览器直接访问，请下载Postman（https://www.postman.com/downloads/）等软件测试，
+测试准备：
+```
+1) User Model对应的表User(或oauth_users表)，有一条数据，
+例如：user_name：lily，password_hash：123456的hash加密值，
+你必须知道这条数据的原始密码，不知道就自己想办法模拟插入；
+2) 表oauth_clients也必须有数据，例如：client_id：testclient，client_secret：testpass （这里需要注意：原作者插入的数据与说明文档的访问地址不一致，注意大小写，可以自己随意修改）
+3) 打开postman软件选择POST方式（不是GET）;
+4) URL填：http://localhost/oauth2/token   （例如localhost能访问到你的项目）
+```
 
+一、使用密码式(即grant_type=password)获取Token
+1)在Body里面使用如下的key-value:
+```
+grant_type:password
+username:lily
+password:123456
+client_id:testclient
+client_secret:testpass
+```
+2) 点击Send按钮，Bingo ! 如果顺利的话，你就会得到类似如下的数据：
+```php
+{
+    "access_token": "6b7225b47ce294c2c9fe362ed7ace3be6ac22e27",
+    "expires_in": 86400,
+    "token_type": "Bearer",
+    "scope": null,
+    "refresh_token": "afccb2ce48cd35d4b96df561b5ca0e4755dfde82"
+}
+```
+
+二、更新令牌(即grant_type=refresh_token)获取Token
+(获取上一步骤的结果refresh_token，作为本次的一个参数发送)
+1)在Body里面使用如下的key-value:
+```
+grant_type:refresh_token
+client_id:testclient
+client_secret:testpass
+refresh_token:afccb2ce48cd35d4b96df561b5ca0e4755dfde82
+```
+2)  点击Send按钮，Bingo !如果顺利的话，你就会得到类似如下的数据：
+```php
+{
+    "access_token": "6b7225b47ce294c2c9fe362ed7ace3be6dc22115",
+    "expires_in": 86400,
+    "token_type": "Bearer",
+    "scope": null,
+    "refresh_token": "afccb2ce48cd35d4b96df561b5ca0e47556f88"
+}
+```
 
 Create action authorize in site controller for Authorization Code
 
