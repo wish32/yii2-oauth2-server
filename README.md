@@ -1,3 +1,5 @@
+原作者没有详细的备注，令人难于使用，下面我将添加些许的备注
+
 # yii2-oauth2-server
 
 A wrapper for implementing an OAuth2 Server(https://github.com/bshaffer/oauth2-server-php)
@@ -67,6 +69,17 @@ add url rule to urlManager
 ]
 ```
 
+我的版本是这样的，在文件/backend/config/main.php （你可能是：/api/config/main.php）：
+```php
+'urlManager' => [
+            'enablePrettyUrl' => true,
+            'enableStrictParsing' => true,
+            'showScriptName' => false,
+            'rules' => [
+                'POST oauth2/<action:\w+>' => 'oauth2/rest/<action>',
+            ],
+        ],
+```
 
 ## Configuration
 
@@ -111,6 +124,117 @@ class Controller extends \yii\rest\Controller
     }
 }
 ```
+
+以上我的做法是这样的：
+创建一个文件：/common/backend/BackendController.php
+```php
+<?php
+namespace common\backend;
+
+use yii;
+use yii\helpers\ArrayHelper;
+use yii\filters\auth\HttpBearerAuth;
+use yii\filters\auth\QueryParamAuth;
+use filsh\yii2\oauth2server\filters\ErrorToExceptionFilter;
+use filsh\yii2\oauth2server\filters\auth\CompositeAuth;
+use \yii\rest\Controller;
+
+
+class BackendController extends Controller
+{
+    /**
+     * @inheritdoc
+     */
+    public function behaviors()
+    {
+        return ArrayHelper::merge(parent::behaviors(), [
+            'authenticator' => [
+                'class' => CompositeAuth::className(),
+                'authMethods' => [
+                    ['class' => HttpBearerAuth::className()],
+                    ['class' => QueryParamAuth::className(), 'tokenParam' => 'accessToken'],
+                ]
+            ],
+            'exceptionFilter' => [
+                'class' => ErrorToExceptionFilter::className()
+            ],
+        ]);
+    }
+}
+```
+
+然后，在文件/backend/controllers/SiteController.php
+使你想要颁发token的类继承于\common\backend\BackendController，而不是yii\web\Controller
+class SiteController extends \common\backend\BackendController
+在该类SiteController里面添加一个函数（如下一步的做法，下一步是相同的，就不需要重复添加actionAuthorize()函数了）：
+```php
+/**
+     * @return mixed
+     */
+    public function actionAuthorize()
+    {
+        if (Yii::$app->getUser()->getIsGuest())
+            return $this->redirect('login');
+    
+        /** @var $module \filsh\yii2\oauth2server\Module */
+        $module = Yii::$app->getModule('oauth2');
+        $response = $module->getServer()->handleAuthorizeRequest(null, null, !Yii::$app->getUser()->getIsGuest(), Yii::$app->getUser()->getId());
+    
+        /** @var object $response \OAuth2\Response */
+        Yii::$app->getResponse()->format = \yii\web\Response::FORMAT_JSON;
+    
+        return $response->getParameters();
+    }
+```
+
+再然后，在/common/models/User.php
+使你想保存用户数据的User model类继承于抽象类：\OAuth2\Storage\UserCredentialsInterface（同时保留原有的\yii\web\IdentityInterface）
+class User extends ActiveRecord implements \yii\web\IdentityInterface,\OAuth2\Storage\UserCredentialsInterface
+并在文件里面实现以下三个函数：
+
+```php
+/**
+     * Implemented for Oauth2 Interface
+     */
+    public static function findIdentityByAccessToken($token, $type = null)
+    {
+        /** @var \filsh\yii2\oauth2server\Module $module */
+        $module = Yii::$app->getModule('oauth2');
+        $token = $module->getServer()->getResourceController()->getToken();
+        return !empty($token['user_id'])
+        ? static::findIdentity($token['user_id'])
+        : null;
+    }
+    
+    /**
+     * Implemented for Oauth2 Interface
+     */
+    public function checkUserCredentials($username, $password)
+    {
+        $user = static::findByUsername($username);
+        if (empty($user)) {
+            return false;
+        }
+        return $user->validatePassword($password);
+    }
+    
+    /**
+     * Implemented for Oauth2 Interface
+     */
+    public function getUserDetails($username)
+    {
+        $user = static::findByUsername($username);
+        return ['user_id' => $user->getId()];
+    }
+```
+
+
+此时你应该完成了，但坑还是有的，请留意
+
+
+测试方法：
+http://localhost/oauth2/token
+
 
 Create action authorize in site controller for Authorization Code
 
